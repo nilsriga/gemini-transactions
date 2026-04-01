@@ -33,7 +33,6 @@ function gapiLoaded() {
 
 async function initializeGapiClient() {
     await gapi.client.init({
-        // apiKey: 'YOUR_API_KEY', // Not strictly needed for user-authed Sheets/Drive
         discoveryDocs: [
             'https://sheets.googleapis.com/$discovery/rest?version=v4',
             'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -48,16 +47,53 @@ function gisLoaded() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
-        callback: '', // defined later
+        callback: '', // defined later in handleAuthClick
     });
     gisInited = true;
     checkBeforeStart();
 }
 
-function checkBeforeStart() {
+/**
+ * Persists token to localStorage
+ */
+function saveToken(tokenResp) {
+    const expiration = Date.now() + (tokenResp.expires_in * 1000);
+    localStorage.setItem('google_token', JSON.stringify({
+        ...tokenResp,
+        expiration
+    }));
+}
+
+/**
+ * Checks for a valid token in localStorage and sets it in GAPI
+ */
+async function loadPersistedToken() {
+    const stored = localStorage.getItem('google_token');
+    if (!stored) return false;
+
+    const tokenData = JSON.parse(stored);
+    if (Date.now() > tokenData.expiration) {
+        localStorage.removeItem('google_token');
+        return false;
+    }
+
+    gapi.client.setToken(tokenData);
+    return true;
+}
+
+async function checkBeforeStart() {
     if (gapiInited && gisInited) {
-        signinBtn.style.display = 'block';
-        authStatus.textContent = 'Ready to sign in';
+        const hasToken = await loadPersistedToken();
+        if (hasToken) {
+            signinBtn.style.display = 'none';
+            signoutBtn.style.display = 'block';
+            authStatus.textContent = 'Restored Session';
+            addLog('Session restored from storage');
+            await findSpreadsheet();
+        } else {
+            signinBtn.style.display = 'block';
+            authStatus.textContent = 'Ready to sign in';
+        }
     }
 }
 
@@ -66,6 +102,7 @@ async function handleAuthClick() {
         if (resp.error !== undefined) {
             throw (resp);
         }
+        saveToken(resp);
         signinBtn.style.display = 'none';
         signoutBtn.style.display = 'block';
         authStatus.textContent = 'Authenticated';
@@ -74,11 +111,8 @@ async function handleAuthClick() {
     };
 
     if (gapi.client.getToken() === null) {
-        // Prompt the user to select a Google Account and ask for consent to share their data
-        // when establishing a new session.
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        // Skip display of account chooser and consent dialog for an existing session.
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
@@ -88,18 +122,19 @@ function handleSignoutClick() {
     if (token !== null) {
         google.accounts.oauth2.revoke(token.access_token);
         gapi.client.setToken('');
+        localStorage.removeItem('google_token');
         signinBtn.style.display = 'block';
         signoutBtn.style.display = 'none';
         formSection.style.display = 'none';
         setupSection.style.display = 'none';
         authStatus.textContent = 'Signed out';
-        addLog('Signed out');
+        addLog('Signed out and cleared storage');
     }
 }
 
 async function findSpreadsheet() {
     try {
-        addLog(`Searching for spreadsheet: "${SHEET_NAME}"...`);
+        addLog(`Searching for "${SHEET_NAME}"...`);
         const response = await gapi.client.drive.files.list({
             q: `name = '${SHEET_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet'`,
             fields: 'files(id, name)',
@@ -108,16 +143,19 @@ async function findSpreadsheet() {
         const files = response.result.files;
         if (files && files.length > 0) {
             spreadsheetId = files[0].id;
-            addLog(`Found spreadsheet! ID: ${spreadsheetId}`);
+            addLog(`Connected to Sheet!`);
             formSection.style.display = 'block';
             setupSection.style.display = 'block';
-            authStatus.textContent = `Syncing with: ${SHEET_NAME}`;
+            authStatus.textContent = `Syncing: ${SHEET_NAME}`;
         } else {
-            addLog('Spreadsheet not found. Please create it first.');
-            authStatus.textContent = 'Spreadsheet not found';
+            addLog('Spreadsheet not found! Create it first.');
+            authStatus.textContent = 'Error: Sheet Missing';
         }
     } catch (err) {
-        addLog('Error finding spreadsheet: ' + err.message);
+        addLog('Error: ' + (err.result?.error?.message || err.message));
+        if (err.status === 401) {
+            handleSignoutClick(); // Token probably expired
+        }
     }
 }
 
@@ -126,14 +164,12 @@ async function resetSpreadsheet() {
     if (!confirm('Are you sure you want to delete ALL data and reset headers?')) return;
 
     try {
-        addLog('Resetting spreadsheet...');
-        // 1. Clear Sheet1
+        addLog('Resetting...');
         await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: spreadsheetId,
             range: 'Sheet1',
         });
 
-        // 2. Set Headers
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: spreadsheetId,
             range: 'Sheet1!A1',
@@ -143,9 +179,9 @@ async function resetSpreadsheet() {
             }
         });
 
-        addLog('Headers reset successfully!');
+        addLog('Reset successful!');
     } catch (err) {
-        addLog('Error resetting: ' + err.message);
+        addLog('Reset Error: ' + err.message);
     }
 }
 
@@ -154,8 +190,12 @@ txForm.addEventListener('submit', async (e) => {
     if (!spreadsheetId) return;
 
     try {
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Syncing...';
+
         const row = [
-            Date.now().toString().slice(-6), // Simple id
+            Date.now().toString().slice(-6),
             document.getElementById('date').value,
             document.getElementById('amount').value,
             document.getElementById('cash').value,
@@ -170,7 +210,6 @@ txForm.addEventListener('submit', async (e) => {
             document.getElementById('vendor').value
         ];
 
-        addLog('Appending row...');
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: spreadsheetId,
             range: 'Sheet1!A1',
@@ -181,12 +220,15 @@ txForm.addEventListener('submit', async (e) => {
             }
         });
 
-        addLog('Transaction added!');
+        addLog('Success!');
         txForm.reset();
-        // Keep date as today?
         document.getElementById('date').valueAsDate = new Date();
     } catch (err) {
-        addLog('Error adding transaction: ' + err.message);
+        addLog('Error: ' + err.message);
+    } finally {
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add to Spreadsheet';
     }
 });
 
@@ -194,5 +236,4 @@ signinBtn.onclick = handleAuthClick;
 signoutBtn.onclick = handleSignoutClick;
 initBtn.onclick = resetSpreadsheet;
 
-// Set default date
 document.getElementById('date').valueAsDate = new Date();
