@@ -7,6 +7,7 @@ let spreadsheetId = null;
 const CLIENT_ID = '77769588193-jkh79cchp467cpf649b9ho3h3np1ka5b.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly';
 const SHEET_NAME = 'Gemini Workspace Sync (Node.js)';
+const ENTITIES = ['Ilze', 'Biedrība', 'IK Rīgas Taksis', 'Nils'];
 const COLUMNS = ['id', 'date', 'amount', 'cash', 'comment', 'cat a', 'cat ab', 'cat abc', 'cat abcd', 'personal', 'fradulent', 'non-reimbursable', 'vendor'];
 
 /* UI Elements */
@@ -16,6 +17,7 @@ const authStatus = document.getElementById('auth-status');
 const logsEl = document.getElementById('logs');
 const formSection = document.getElementById('form-section');
 const setupSection = document.getElementById('setup-section');
+const entitySection = document.getElementById('entity-section');
 const initBtn = document.getElementById('init-btn');
 const txForm = document.getElementById('tx-form');
 
@@ -127,6 +129,7 @@ function handleSignoutClick() {
         signoutBtn.style.display = 'none';
         formSection.style.display = 'none';
         setupSection.style.display = 'none';
+        entitySection.style.display = 'none';
         authStatus.textContent = 'Signed out';
         addLog('Signed out and cleared storage');
     }
@@ -146,6 +149,7 @@ async function findSpreadsheet() {
             addLog(`Connected to Sheet!`);
             formSection.style.display = 'block';
             setupSection.style.display = 'block';
+            entitySection.style.display = 'block';
             authStatus.textContent = `Syncing: ${SHEET_NAME}`;
         } else {
             addLog('Spreadsheet not found! Create it first.');
@@ -161,25 +165,47 @@ async function findSpreadsheet() {
 
 async function resetSpreadsheet() {
     if (!spreadsheetId) return;
-    if (!confirm('Are you sure you want to delete ALL data and reset headers?')) return;
+    if (!confirm('Are you sure you want to delete ALL data and reset headers for ALL entities?')) return;
 
     try {
-        addLog('Resetting...');
-        await gapi.client.sheets.spreadsheets.values.clear({
-            spreadsheetId: spreadsheetId,
-            range: 'Sheet1',
+        addLog('Getting current sheets...');
+        const spreadsheet = await gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: spreadsheetId
         });
+        
+        const currentSheetTitles = spreadsheet.result.sheets.map(s => s.properties.title);
+        const sheetsToAdd = ENTITIES.filter(title => !currentSheetTitles.includes(title));
 
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: spreadsheetId,
-            range: 'Sheet1!A1',
-            valueInputOption: 'RAW',
-            resource: {
-                values: [COLUMNS]
-            }
-        });
+        if (sheetsToAdd.length > 0) {
+            addLog(`Adding ${sheetsToAdd.length} missing sheets...`);
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: spreadsheetId,
+                resource: {
+                    requests: sheetsToAdd.map(title => ({
+                        addSheet: { properties: { title } }
+                    }))
+                }
+            });
+        }
 
-        addLog('Reset successful!');
+        for (const title of ENTITIES) {
+            addLog(`Resetting ${title}...`);
+            await gapi.client.sheets.spreadsheets.values.clear({
+                spreadsheetId: spreadsheetId,
+                range: `${title}!A:Z`,
+            });
+
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: spreadsheetId,
+                range: `${title}!A1`,
+                valueInputOption: 'RAW',
+                resource: {
+                    values: [COLUMNS]
+                }
+            });
+        }
+
+        addLog('All entities reset successful!');
     } catch (err) {
         addLog('Reset Error: ' + err.message);
     }
@@ -190,9 +216,10 @@ txForm.addEventListener('submit', async (e) => {
     if (!spreadsheetId) return;
 
     try {
+        const selectedEntity = document.querySelector('input[name="entity"]:checked').value;
         const submitBtn = document.getElementById('submit-btn');
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Syncing...';
+        submitBtn.textContent = `Syncing to ${selectedEntity}...`;
 
         const row = [
             Date.now().toString().slice(-6),
@@ -212,7 +239,7 @@ txForm.addEventListener('submit', async (e) => {
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: spreadsheetId,
-            range: 'Sheet1!A1',
+            range: `${selectedEntity}!A1`,
             valueInputOption: 'RAW',
             insertDataOption: 'INSERT_ROWS',
             resource: {
@@ -220,7 +247,7 @@ txForm.addEventListener('submit', async (e) => {
             }
         });
 
-        addLog('Success!');
+        addLog(`Success! Added to ${selectedEntity}`);
         txForm.reset();
         document.getElementById('date').valueAsDate = new Date();
     } catch (err) {

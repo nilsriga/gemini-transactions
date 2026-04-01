@@ -21,6 +21,23 @@
             <button id="signout-btn" style="display: none;">Sign Out</button>
         </div>
 
+        <section id="entity-section" style="display: none;">
+            <h2>Select Entity</h2>
+            <div class="entity-selector">
+                <input type="radio" id="entity-ilze" name="entity" value="Ilze" checked>
+                <label for="entity-ilze">Ilze</label>
+                
+                <input type="radio" id="entity-biedriba" name="entity" value="Biedrība">
+                <label for="entity-biedriba">Biedrība</label>
+                
+                <input type="radio" id="entity-taksis" name="entity" value="IK Rīgas Taksis">
+                <label for="entity-taksis">Taksis</label>
+                
+                <input type="radio" id="entity-nils" name="entity" value="Nils">
+                <label for="entity-nils">Nils</label>
+            </div>
+        </section>
+
         <section id="setup-section" style="display: none;">
             <h2>Initialization</h2>
             <p>Setup headers and clear current data in "Gemini Workspace Sync (Node.js)"</p>

@@ -60,6 +60,35 @@ main {
     margin-bottom: 1.5rem;
 }
 
+.entity-selector {
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+}
+
+.entity-selector input[type="radio"] {
+    display: none;
+}
+
+.entity-selector label {
+    flex: 1;
+    padding: 10px;
+    background: var(--pastel-pink);
+    border: 2px solid var(--primary);
+    border-radius: 10px;
+    text-align: center;
+    font-weight: bold;
+    color: var(--dark);
+    cursor: pointer;
+    transition: background 0.3s, color 0.3s;
+}
+
+.entity-selector input[type="radio"]:checked + label {
+    background: var(--neon-pink);
+    color: white;
+    border-color: var(--neon-pink);
+}
+
 section {
     background: var(--white);
     margin-bottom: 1.5rem;
