@@ -1,0 +1,16 @@
+{
+  "name": "Transaction Sync",
+  "short_name": "TxSync",
+  "description": "Log transactions directly to Google Sheets.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4285F4",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

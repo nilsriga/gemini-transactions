@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Sync PWA</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4285F4">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+</head>
+<body>
+    <header>
+        <h1>Transaction Sync</h1>
+        <div id="auth-status" class="status">Initializing...</div>
+    </header>
+
+    <main>
+        <div id="auth-controls">
+            <button id="signin-btn" style="display: none;">Sign In with Google</button>
+            <button id="signout-btn" style="display: none;">Sign Out</button>
+        </div>
+
+        <section id="setup-section" style="display: none;">
+            <h2>Initialization</h2>
+            <p>Setup headers and clear current data in "Gemini Workspace Sync (Node.js)"</p>
+            <button id="init-btn" class="danger">Reset Spreadsheet Headers</button>
+        </section>
+
+        <section id="form-section" style="display: none;">
+            <h2>Log Transaction</h2>
+            <form id="tx-form">
+                <div class="field">
+                    <label for="date">Date</label>
+                    <input type="date" id="date" required>
+                </div>
+                <div class="field">
+                    <label for="amount">Amount</label>
+                    <input type="number" id="amount" step="0.01" required>
+                </div>
+                <div class="field">
+                    <label for="cash">Cash (Y/N)</label>
+                    <input type="text" id="cash" placeholder="Y or N">
+                </div>
+                <div class="field">
+                    <label for="comment">Comment</label>
+                    <input type="text" id="comment">
+                </div>
+                <div class="field">
+                    <label for="cat-a">Category A</label>
+                    <input type="text" id="cat-a">
+                </div>
+                <div class="field">
+                    <label for="cat-ab">Category AB</label>
+                    <input type="text" id="cat-ab">
+                </div>
+                <div class="field">
+                    <label for="cat-abc">Category ABC</label>
+                    <input type="text" id="cat-abc">
+                </div>
+                <div class="field">
+                    <label for="cat-abcd">Category ABCD</label>
+                    <input type="text" id="cat-abcd">
+                </div>
+                <div class="field">
+                    <label>Flags</label>
+                    <div class="checkboxes">
+                        <label><input type="checkbox" id="personal"> Personal</label>
+                        <label><input type="checkbox" id="fradulent"> Fraudulent</label>
+                        <label><input type="checkbox" id="non-reimbursable"> Non-Reimbursable</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="vendor">Vendor</label>
+                    <input type="text" id="vendor">
+                </div>
+                <button type="submit" id="submit-btn">Add to Spreadsheet</button>
+            </form>
+        </section>
+
+        <section id="log-section">
+            <div id="logs" class="logs"></div>
+        </section>
+    </main>
+
+    <!-- Google API Client Libraries -->
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW Registered', reg))
+                    .catch(err => console.error('SW Failed', err));
+            });
+        }
+    </script>
+</body>
+</html>
