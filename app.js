@@ -11,25 +11,67 @@ const SHEET_NAME = 'Gemini Workspace Sync (Node.js)';
 const ENTITIES = ['Ilze', 'Biedrība', 'IK Rīgas Taksis', 'Nils'];
 const COLUMNS = ['id', 'date', 'amount', 'cash', 'comment', 'cat a', 'cat ab', 'cat abc', 'cat abcd', 'personal', 'fradulent', 'non-reimbursable', 'vendor'];
 
-/* UI Elements */
-const signinBtn = document.getElementById('signin-btn');
-const signoutBtn = document.getElementById('signout-btn');
-const authStatus = document.getElementById('auth-status');
-const logsEl = document.getElementById('logs');
-const formSection = document.getElementById('form-section');
-const setupSection = document.getElementById('setup-section');
-const entitySection = document.getElementById('entity-section');
-const initBtn = document.getElementById('init-btn');
-const txForm = document.getElementById('tx-form');
-const recentTbody = document.getElementById('recent-tbody');
-const tableStatus = document.getElementById('table-status');
+/* UI Elements - initialized in DOMContentLoaded */
+let signinBtn, signoutBtn, authStatus, logsEl, formSection, setupSection, entitySection, initBtn, txForm, recentTbody, tableStatus;
+let ghSetupModal, ghTokenInput, saveGhTokenBtn, checkConnBtn;
 
-/* GitHub Setup UI */
-const ghSetupModal = document.getElementById('github-setup-modal');
-const ghTokenInput = document.getElementById('gh-token-input');
-const saveGhTokenBtn = document.getElementById('save-gh-token-btn');
+document.addEventListener('DOMContentLoaded', () => {
+    signinBtn = document.getElementById('signin-btn');
+    signoutBtn = document.getElementById('signout-btn');
+    authStatus = document.getElementById('auth-status');
+    logsEl = document.getElementById('logs');
+    formSection = document.getElementById('form-section');
+    setupSection = document.getElementById('setup-section');
+    entitySection = document.getElementById('entity-section');
+    initBtn = document.getElementById('init-btn');
+    txForm = document.getElementById('tx-form');
+    recentTbody = document.getElementById('recent-tbody');
+    tableStatus = document.getElementById('table-status');
+    ghSetupModal = document.getElementById('github-setup-modal');
+    ghTokenInput = document.getElementById('gh-token-input');
+    saveGhTokenBtn = document.getElementById('save-gh-token-btn');
+    checkConnBtn = document.getElementById('check-conn-btn');
+
+    /* Event Listeners */
+    if (signinBtn) signinBtn.onclick = handleAuthClick;
+    if (signoutBtn) signoutBtn.onclick = handleSignoutClick;
+    if (initBtn) initBtn.onclick = resetSpreadsheet;
+    if (checkConnBtn) checkConnBtn.onclick = testConnection;
+    if (saveGhTokenBtn) {
+        saveGhTokenBtn.onclick = () => {
+            const token = ghTokenInput.value.trim();
+            if (token) {
+                localStorage.setItem('gh_token', token);
+                ghSetupModal.style.display = 'none';
+                addLog('GitHub token saved.');
+                performEncryptedBackup();
+            }
+        };
+    }
+
+    if (txForm) {
+        txForm.addEventListener('submit', handleFormSubmit);
+        txForm.addEventListener('input', saveDraft);
+    }
+
+    document.querySelectorAll('input[name="entity"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            saveDraft();
+            refreshDataView();
+        });
+    });
+
+    document.getElementById('date').valueAsDate = new Date();
+    
+    // Check initialization
+    checkBeforeStart();
+});
 
 function addLog(msg) {
+    if (!logsEl) {
+        console.log(`[LOG-early] ${msg}`);
+        return;
+    }
     const entry = document.createElement('div');
     entry.className = 'log-entry';
     entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -39,6 +81,7 @@ function addLog(msg) {
 
 /* Redundancy: Draft Persistence */
 function saveDraft() {
+    if (!txForm) return;
     const draft = {
         date: document.getElementById('date').value,
         amount: document.getElementById('amount').value,
@@ -107,7 +150,6 @@ async function performEncryptedBackup() {
     
     addLog('Starting encrypted backup...');
     try {
-        // Fetch ALL data from ALL entities for full backup
         const allData = {};
         for (const title of ENTITIES) {
             const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -170,16 +212,6 @@ async function backupToGitHub(encryptedData) {
     }
 }
 
-saveGhTokenBtn.onclick = () => {
-    const token = ghTokenInput.value.trim();
-    if (token) {
-        localStorage.setItem('gh_token', token);
-        ghSetupModal.style.display = 'none';
-        addLog('GitHub token saved.');
-        performEncryptedBackup();
-    }
-};
-
 /* Data View: Fetch Last 20 rows */
 async function refreshDataView() {
     if (!spreadsheetId) return;
@@ -190,14 +222,12 @@ async function refreshDataView() {
     try {
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: spreadsheetId,
-            range: `${selectedEntity}!A:M`, // Fetch from A1 to include headers for verification
+            range: `${selectedEntity}!A:M`,
         });
 
         const allRows = response.result.values || [];
-        // Filter out the header row if it exists
         const dataRows = allRows.length > 0 && allRows[0][0] === 'id' ? allRows.slice(1) : allRows;
-        
-        const last20 = dataRows.slice(-20).reverse(); // Newest first
+        const last20 = dataRows.slice(-20).reverse();
 
         if (recentTbody) {
             recentTbody.innerHTML = '';
@@ -224,7 +254,7 @@ async function refreshDataView() {
 }
 
 /* Callback for gapiLoaded */
-function gapiLoaded() {
+window.gapiLoaded = function() {
     gapi.load('client', initializeGapiClient);
 }
 
@@ -240,7 +270,7 @@ async function initializeGapiClient() {
 }
 
 /* Callback for gisLoaded */
-function gisLoaded() {
+window.gisLoaded = function() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -257,9 +287,6 @@ function gisLoaded() {
     checkBeforeStart();
 }
 
-/**
- * Persists token to localStorage
- */
 function saveToken(tokenResp) {
     const expiration = Date.now() + (tokenResp.expires_in * 1000);
     localStorage.setItem('google_token', JSON.stringify({
@@ -268,16 +295,13 @@ function saveToken(tokenResp) {
     }));
 }
 
-/**
- * Checks for a valid token in localStorage and sets it in GAPI
- */
 async function loadPersistedToken() {
     const stored = localStorage.getItem('google_token');
     if (!stored) return false;
 
     try {
         const tokenData = JSON.parse(stored);
-        if (Date.now() > (tokenData.expiration - 60000)) { // 1 min buffer
+        if (Date.now() > (tokenData.expiration - 60000)) {
             localStorage.removeItem('google_token');
             return false;
         }
@@ -292,19 +316,19 @@ async function checkBeforeStart() {
     if (gapiInited && gisInited) {
         const hasToken = await loadPersistedToken();
         if (hasToken) {
-            addLog('Session restored from storage');
+            addLog('Session restored');
             onAuthSuccess();
         } else {
-            signinBtn.style.display = 'block';
-            authStatus.textContent = 'Ready to sign in';
+            if (signinBtn) signinBtn.style.display = 'block';
+            if (authStatus) authStatus.textContent = 'Ready to sign in';
         }
     }
 }
 
 async function onAuthSuccess() {
-    signinBtn.style.display = 'none';
-    signoutBtn.style.display = 'block';
-    authStatus.textContent = 'Authenticating...';
+    if (signinBtn) signinBtn.style.display = 'none';
+    if (signoutBtn) signoutBtn.style.display = 'block';
+    if (authStatus) authStatus.textContent = 'Authenticating...';
     
     await findSpreadsheet();
     await fetchUserProfile();
@@ -322,7 +346,7 @@ async function tryDecryptLocalBackup() {
         try {
             const decrypted = await window.CryptoManager.decrypt(encrypted, userProfile.sub);
             const data = JSON.parse(decrypted);
-            addLog(`Local backup decrypted (Data for ${Object.keys(data).length} entities).`);
+            addLog(`Local backup decrypted.`);
         } catch (err) {
             console.error('Backup decryption failed', err);
         }
@@ -330,13 +354,10 @@ async function tryDecryptLocalBackup() {
 }
 
 async function handleAuthClick() {
-    // Check if we already have a token first
     const token = gapi.client.getToken();
     if (token === null) {
-        // Request token with a popup (crucial for mobile/PWA)
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        // Silent request if already granted
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
@@ -347,12 +368,12 @@ function handleSignoutClick() {
         google.accounts.oauth2.revoke(token.access_token);
         gapi.client.setToken('');
         localStorage.removeItem('google_token');
-        signinBtn.style.display = 'block';
-        signoutBtn.style.display = 'none';
-        formSection.style.display = 'none';
-        setupSection.style.display = 'none';
-        entitySection.style.display = 'none';
-        authStatus.textContent = 'Signed out';
+        if (signinBtn) signinBtn.style.display = 'block';
+        if (signoutBtn) signoutBtn.style.display = 'none';
+        if (formSection) formSection.style.display = 'none';
+        if (setupSection) setupSection.style.display = 'none';
+        if (entitySection) entitySection.style.display = 'none';
+        if (authStatus) authStatus.textContent = 'Signed out';
         addLog('Signed out');
     }
 }
@@ -369,14 +390,14 @@ async function findSpreadsheet() {
         if (files && files.length > 0) {
             spreadsheetId = files[0].id;
             addLog(`Connected to Sheet!`);
-            formSection.style.display = 'block';
-            setupSection.style.display = 'block';
-            entitySection.style.display = 'block';
-            authStatus.textContent = `Syncing: ${SHEET_NAME}`;
+            if (formSection) formSection.style.display = 'block';
+            if (setupSection) setupSection.style.display = 'block';
+            if (entitySection) entitySection.style.display = 'block';
+            if (authStatus) authStatus.textContent = `Syncing: ${SHEET_NAME}`;
             await refreshDataView();
         } else {
-            addLog('Spreadsheet not found! Create it first.');
-            authStatus.textContent = 'Error: Sheet Missing';
+            addLog('Spreadsheet not found!');
+            if (authStatus) authStatus.textContent = 'Error: Sheet Missing';
         }
     } catch (err) {
         addLog('Error: ' + (err.result?.error?.message || err.message));
@@ -386,10 +407,10 @@ async function findSpreadsheet() {
 
 async function resetSpreadsheet() {
     if (!spreadsheetId) return;
-    if (!confirm('Do you really want to delete all the contents and reset headers for ALL entities?')) return;
+    if (!confirm('Delete all contents?')) return;
 
     try {
-        addLog('Resetting sheets...');
+        addLog('Resetting...');
         const spreadsheet = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: spreadsheetId });
         const currentSheetTitles = spreadsheet.result.sheets.map(s => s.properties.title);
         const sheetsToAdd = ENTITIES.filter(title => !currentSheetTitles.includes(title));
@@ -413,7 +434,7 @@ async function resetSpreadsheet() {
             });
         }
 
-        addLog('Reset successful!');
+        addLog('Reset success!');
         await refreshDataView();
         await performEncryptedBackup();
     } catch (err) {
@@ -423,7 +444,7 @@ async function resetSpreadsheet() {
 
 async function testConnection() {
     if (!spreadsheetId) return;
-    addLog('Testing connection...');
+    addLog('Testing...');
     try {
         const response = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: spreadsheetId });
         addLog(`Healthy: ${response.result.properties.title}`);
@@ -433,21 +454,23 @@ async function testConnection() {
     }
 }
 
-txForm.addEventListener('submit', async (e) => {
+async function handleFormSubmit(e) {
     e.preventDefault();
     if (!spreadsheetId) return;
 
     if (!navigator.onLine) {
-        addLog('Offline: Transaction saved to draft.');
-        alert('You are offline. Transaction saved as draft.');
+        addLog('Offline: saved draft.');
+        alert('Offline. Saved as draft.');
         return;
     }
 
     try {
         const selectedEntity = document.querySelector('input[name="entity"]:checked').value;
         const submitBtn = document.getElementById('submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.textContent = `Syncing...`;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = `Syncing...`;
+        }
 
         const row = [
             Date.now().toString().slice(-6),
@@ -473,7 +496,7 @@ txForm.addEventListener('submit', async (e) => {
             resource: { values: [row] }
         });
 
-        addLog(`Success! Added to ${selectedEntity}`);
+        addLog(`Added to ${selectedEntity}`);
         txForm.reset();
         clearDraft();
         document.getElementById('date').valueAsDate = new Date();
@@ -483,26 +506,9 @@ txForm.addEventListener('submit', async (e) => {
         addLog('Error: ' + err.message);
     } finally {
         const submitBtn = document.getElementById('submit-btn');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Add to Spreadsheet';
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Add to Spreadsheet';
+        }
     }
-});
-
-/* Event Listeners for Draft Persistence */
-txForm.addEventListener('input', saveDraft);
-document.querySelectorAll('input[name="entity"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-        saveDraft();
-        refreshDataView();
-    });
-});
-
-signinBtn.onclick = handleAuthClick;
-signoutBtn.onclick = handleSignoutClick;
-initBtn.onclick = resetSpreadsheet;
-
-const checkConnBtn = document.getElementById('check-conn-btn');
-if (checkConnBtn) checkConnBtn.onclick = testConnection;
-
-document.getElementById('date').valueAsDate = new Date();
-refreshDataView(); // Initial call
+}
