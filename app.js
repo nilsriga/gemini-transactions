@@ -34,6 +34,7 @@ function addLog(msg) {
     entry.className = 'log-entry';
     entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     logsEl.prepend(entry);
+    console.log(`[LOG] ${msg}`);
 }
 
 /* Redundancy: Draft Persistence */
@@ -117,16 +118,12 @@ async function performEncryptedBackup() {
         }
 
         const jsonData = JSON.stringify(allData);
-        // Use user's sub (ID) and current access token as key components
-        // The user ID is stable, which ensures decryption across sessions if the token is available
         const password = userProfile.sub; 
         const encrypted = await window.CryptoManager.encrypt(jsonData, password);
 
-        // Store local copy (Task 4.1)
         localStorage.setItem(`backup_local_${userProfile.sub}`, encrypted);
         addLog('Local encrypted backup saved.');
 
-        // GitHub Backup (Task 4.2)
         await backupToGitHub(encrypted);
     } catch (err) {
         addLog('Backup Error: ' + err.message);
@@ -136,18 +133,13 @@ async function performEncryptedBackup() {
 
 async function backupToGitHub(encryptedData) {
     const ghToken = localStorage.getItem('gh_token');
-    if (!ghToken) {
-        addLog('GitHub token missing. Opening setup...');
-        ghSetupModal.style.display = 'flex';
-        return;
-    }
+    if (!ghToken) return;
 
     const repo = 'nilsriga/gemini-transactions';
     const path = `backups/${userProfile.sub}.enc`;
     const message = `Automated backup for user ${userProfile.name}`;
 
     try {
-        // Check if file exists to get its SHA
         let sha = null;
         const checkResp = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
             headers: { 'Authorization': `token ${ghToken}` }
@@ -172,12 +164,9 @@ async function backupToGitHub(encryptedData) {
 
         if (putResp.ok) {
             addLog('GitHub backup successful!');
-        } else {
-            const error = await putResp.json();
-            addLog('GitHub Error: ' + error.message);
         }
     } catch (err) {
-        addLog('GitHub Backup Failed: ' + err.message);
+        console.error('GitHub Backup Failed:', err);
     }
 }
 
@@ -186,7 +175,7 @@ saveGhTokenBtn.onclick = () => {
     if (token) {
         localStorage.setItem('gh_token', token);
         ghSetupModal.style.display = 'none';
-        addLog('GitHub token saved. Resuming backup...');
+        addLog('GitHub token saved.');
         performEncryptedBackup();
     }
 };
@@ -201,11 +190,14 @@ async function refreshDataView() {
     try {
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: spreadsheetId,
-            range: `${selectedEntity}!A2:M`,
+            range: `${selectedEntity}!A:M`, // Fetch from A1 to include headers for verification
         });
 
-        const rows = response.result.values || [];
-        const last20 = rows.slice(-20).reverse(); // Newest first
+        const allRows = response.result.values || [];
+        // Filter out the header row if it exists
+        const dataRows = allRows.length > 0 && allRows[0][0] === 'id' ? allRows.slice(1) : allRows;
+        
+        const last20 = dataRows.slice(-20).reverse(); // Newest first
 
         if (recentTbody) {
             recentTbody.innerHTML = '';
@@ -252,7 +244,14 @@ function gisLoaded() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
-        callback: '', // defined later in handleAuthClick
+        callback: (resp) => {
+            if (resp.error !== undefined) {
+                addLog('GIS Error: ' + resp.error);
+                throw (resp);
+            }
+            saveToken(resp);
+            onAuthSuccess();
+        },
     });
     gisInited = true;
     checkBeforeStart();
@@ -276,36 +275,43 @@ async function loadPersistedToken() {
     const stored = localStorage.getItem('google_token');
     if (!stored) return false;
 
-    const tokenData = JSON.parse(stored);
-    // Add 5 min buffer to expiration check
-    if (Date.now() > (tokenData.expiration - 300000)) {
-        localStorage.removeItem('google_token');
+    try {
+        const tokenData = JSON.parse(stored);
+        if (Date.now() > (tokenData.expiration - 60000)) { // 1 min buffer
+            localStorage.removeItem('google_token');
+            return false;
+        }
+        gapi.client.setToken(tokenData);
+        return true;
+    } catch (e) {
         return false;
     }
-
-    gapi.client.setToken(tokenData);
-    return true;
 }
 
 async function checkBeforeStart() {
     if (gapiInited && gisInited) {
         const hasToken = await loadPersistedToken();
         if (hasToken) {
-            signinBtn.style.display = 'none';
-            signoutBtn.style.display = 'block';
-            authStatus.textContent = 'Restored Session';
             addLog('Session restored from storage');
-            await findSpreadsheet();
-            await fetchUserProfile();
-            if (userProfile) {
-                await tryDecryptLocalBackup();
-            }
-            loadDraft();
+            onAuthSuccess();
         } else {
             signinBtn.style.display = 'block';
             authStatus.textContent = 'Ready to sign in';
         }
     }
+}
+
+async function onAuthSuccess() {
+    signinBtn.style.display = 'none';
+    signoutBtn.style.display = 'block';
+    authStatus.textContent = 'Authenticating...';
+    
+    await findSpreadsheet();
+    await fetchUserProfile();
+    if (userProfile) {
+        await tryDecryptLocalBackup();
+    }
+    loadDraft();
 }
 
 async function tryDecryptLocalBackup() {
@@ -314,41 +320,23 @@ async function tryDecryptLocalBackup() {
     const encrypted = localStorage.getItem(backupKey);
     if (encrypted) {
         try {
-            addLog('Decrypting local backup...');
             const decrypted = await window.CryptoManager.decrypt(encrypted, userProfile.sub);
             const data = JSON.parse(decrypted);
-            const entityCount = Object.keys(data).length;
-            addLog(`Backup decrypted successfully! Found data for ${entityCount} entities.`);
-            // We could populate the UI with this data if offline, 
-            // but for now we just verify the decryption works as requested.
+            addLog(`Local backup decrypted (Data for ${Object.keys(data).length} entities).`);
         } catch (err) {
-            addLog('Failed to decrypt local backup. Key may have changed.');
-            console.error(err);
+            console.error('Backup decryption failed', err);
         }
     }
 }
 
 async function handleAuthClick() {
-    tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-            throw (resp);
-        }
-        saveToken(resp);
-        signinBtn.style.display = 'none';
-        signoutBtn.style.display = 'block';
-        authStatus.textContent = 'Authenticated';
-        addLog('Successfully authenticated');
-        await findSpreadsheet();
-        await fetchUserProfile();
-        if (userProfile) {
-            await tryDecryptLocalBackup();
-        }
-        loadDraft();
-    };
-
-    if (gapi.client.getToken() === null) {
+    // Check if we already have a token first
+    const token = gapi.client.getToken();
+    if (token === null) {
+        // Request token with a popup (crucial for mobile/PWA)
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
+        // Silent request if already granted
         tokenClient.requestAccessToken({ prompt: '' });
     }
 }
@@ -365,7 +353,7 @@ function handleSignoutClick() {
         setupSection.style.display = 'none';
         entitySection.style.display = 'none';
         authStatus.textContent = 'Signed out';
-        addLog('Signed out and cleared storage');
+        addLog('Signed out');
     }
 }
 
@@ -392,9 +380,7 @@ async function findSpreadsheet() {
         }
     } catch (err) {
         addLog('Error: ' + (err.result?.error?.message || err.message));
-        if (err.status === 401) {
-            handleSignoutClick(); // Token probably expired
-        }
+        if (err.status === 401) handleSignoutClick();
     }
 }
 
@@ -403,44 +389,31 @@ async function resetSpreadsheet() {
     if (!confirm('Do you really want to delete all the contents and reset headers for ALL entities?')) return;
 
     try {
-        addLog('Getting current sheets...');
-        const spreadsheet = await gapi.client.sheets.spreadsheets.get({
-            spreadsheetId: spreadsheetId
-        });
-        
+        addLog('Resetting sheets...');
+        const spreadsheet = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: spreadsheetId });
         const currentSheetTitles = spreadsheet.result.sheets.map(s => s.properties.title);
         const sheetsToAdd = ENTITIES.filter(title => !currentSheetTitles.includes(title));
 
         if (sheetsToAdd.length > 0) {
-            addLog(`Adding ${sheetsToAdd.length} missing sheets...`);
             await gapi.client.sheets.spreadsheets.batchUpdate({
                 spreadsheetId: spreadsheetId,
                 resource: {
-                    requests: sheetsToAdd.map(title => ({
-                        addSheet: { properties: { title } }
-                    }))
+                    requests: sheetsToAdd.map(title => ({ addSheet: { properties: { title } } }))
                 }
             });
         }
 
         for (const title of ENTITIES) {
-            addLog(`Resetting ${title}...`);
-            await gapi.client.sheets.spreadsheets.values.clear({
-                spreadsheetId: spreadsheetId,
-                range: `${title}!A:Z`,
-            });
-
+            await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: spreadsheetId, range: `${title}!A:Z` });
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: spreadsheetId,
                 range: `${title}!A1`,
                 valueInputOption: 'RAW',
-                resource: {
-                    values: [COLUMNS]
-                }
+                resource: { values: [COLUMNS] }
             });
         }
 
-        addLog('All entities reset successful!');
+        addLog('Reset successful!');
         await refreshDataView();
         await performEncryptedBackup();
     } catch (err) {
@@ -449,20 +422,14 @@ async function resetSpreadsheet() {
 }
 
 async function testConnection() {
-    if (!spreadsheetId) {
-        addLog('Error: Not connected to any spreadsheet.');
-        return;
-    }
-    addLog('Testing connection to Google Sheets...');
+    if (!spreadsheetId) return;
+    addLog('Testing connection...');
     try {
-        const response = await gapi.client.sheets.spreadsheets.get({
-            spreadsheetId: spreadsheetId
-        });
-        addLog(`Connection healthy! Spreadsheet: ${response.result.properties.title}`);
+        const response = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: spreadsheetId });
+        addLog(`Healthy: ${response.result.properties.title}`);
         alert(`Connected to: ${response.result.properties.title}`);
     } catch (err) {
-        addLog('Connection Test Failed: ' + err.message);
-        alert('Connection Failed. Please check your internet or re-authenticate.');
+        addLog('Test Failed: ' + err.message);
     }
 }
 
@@ -471,8 +438,8 @@ txForm.addEventListener('submit', async (e) => {
     if (!spreadsheetId) return;
 
     if (!navigator.onLine) {
-        addLog('Offline: Transaction saved to local draft. Syncing when online...');
-        alert('You are currently offline. The transaction will be saved as a draft and you can submit it once you have a connection.');
+        addLog('Offline: Transaction saved to draft.');
+        alert('You are offline. Transaction saved as draft.');
         return;
     }
 
@@ -480,7 +447,7 @@ txForm.addEventListener('submit', async (e) => {
         const selectedEntity = document.querySelector('input[name="entity"]:checked').value;
         const submitBtn = document.getElementById('submit-btn');
         submitBtn.disabled = true;
-        submitBtn.textContent = `Syncing to ${selectedEntity}...`;
+        submitBtn.textContent = `Syncing...`;
 
         const row = [
             Date.now().toString().slice(-6),
@@ -503,9 +470,7 @@ txForm.addEventListener('submit', async (e) => {
             range: `${selectedEntity}!A1`,
             valueInputOption: 'RAW',
             insertDataOption: 'INSERT_ROWS',
-            resource: {
-                values: [row]
-            }
+            resource: { values: [row] }
         });
 
         addLog(`Success! Added to ${selectedEntity}`);
@@ -540,3 +505,4 @@ const checkConnBtn = document.getElementById('check-conn-btn');
 if (checkConnBtn) checkConnBtn.onclick = testConnection;
 
 document.getElementById('date').valueAsDate = new Date();
+refreshDataView(); // Initial call
