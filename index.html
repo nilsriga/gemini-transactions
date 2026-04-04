@@ -8,12 +8,14 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4285F4">
     <link rel="apple-touch-icon" href="icons/icon.svg">
+    <!-- Lucide Icons for Edit/Delete/Settings -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
     <header>
         <h1>Transaction Sync</h1>
         <div id="auth-status" class="status">Initializing...</div>
-        <div class="push-info">Code Last Updated: P26-04-04 16:50:21</span></div>
+        <div class="push-info">Code Last Updated: P26-04-04 22:17:39</span></div>
     </header>
 
     <main>
@@ -22,118 +24,78 @@
             <button id="signout-btn" style="display: none;">Sign Out</button>
         </div>
 
-        <section id="entity-section" style="display: none;">
-            <h2>Select Entity</h2>
-            <div class="entity-selector">
-                <input type="radio" id="entity-ilze" name="entity" value="Ilze" checked>
-                <label for="entity-ilze">Ilze</label>
-                
-                <input type="radio" id="entity-biedriba" name="entity" value="Biedrība">
-                <label for="entity-biedriba">Biedrība</label>
-                
-                <input type="radio" id="entity-taksis" name="entity" value="IK Rīgas Taksis">
-                <label for="entity-taksis">Taksis</label>
-                
-                <input type="radio" id="entity-nils" name="entity" value="Nils">
-                <label for="entity-nils">Nils</label>
+        <!-- Section 1: Entity Management -->
+        <section id="entity-mgmt-section" style="display: none;">
+            <div class="section-header">
+                <h2>Manage Entities</h2>
+                <button id="add-entity-btn" class="icon-btn" title="Add Entity"><i data-lucide="plus-circle"></i></button>
+            </div>
+            <div id="entity-list" class="chip-container">
+                <!-- Entities will be rendered here as editable chips -->
+            </div>
+            <div id="entity-selection-area">
+                <h3>Select Active Entity</h3>
+                <div id="entity-selector" class="radio-card-grid">
+                    <!-- Radio buttons for entity selection -->
+                </div>
             </div>
         </section>
 
+        <!-- Section 2: Log Transaction (Dynamic Form) -->
+        <section id="form-section" style="display: none;">
+            <h2>Log Transaction</h2>
+            <div id="tx-type-selector" class="radio-card-grid">
+                <!-- Transaction types: income, expense, lending, borrowing, payback, receiving payback -->
+            </div>
+
+            <form id="dynamic-tx-form" class="dynamic-form">
+                <!-- Dynamic fields will be injected here -->
+                <div id="dynamic-fields-container"></div>
+                
+                <div id="form-actions" style="display: none; margin-top: 20px;">
+                    <button type="submit" id="submit-btn">Add to Spreadsheet</button>
+                    <button type="button" id="cancel-edit-btn" style="display: none; background: var(--danger);">Cancel Edit</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Section 3: Recent Transactions (Full Width) -->
+        <section id="recent-transactions-section" style="display: none;" class="full-width">
+            <div class="section-header">
+                <h2>Recent Transactions</h2>
+                <div class="table-controls">
+                    <button id="undo-btn" class="icon-btn" title="Undo"><i data-lucide="undo-2"></i></button>
+                    <button id="redo-btn" class="icon-btn" title="Redo"><i data-lucide="redo-2"></i></button>
+                    <button id="table-settings-btn" class="icon-btn" title="Column Settings"><i data-lucide="settings"></i></button>
+                </div>
+            </div>
+            
+            <div class="search-bar">
+                <i data-lucide="search"></i>
+                <input type="text" id="fuzzy-search" placeholder="Fuzzy search transactions...">
+            </div>
+
+            <div id="recent-list-container" class="table-scroll-container">
+                <table id="recent-table">
+                    <thead id="recent-thead">
+                        <!-- Headers generated based on settings -->
+                    </thead>
+                    <tbody id="recent-tbody">
+                        <!-- Data rows -->
+                    </tbody>
+                </table>
+                <div id="table-status" class="loading-status">Loading data...</div>
+            </div>
+        </section>
+
+        <!-- Section 4: Initialization (Moved to bottom) -->
         <section id="setup-section" style="display: none;">
-            <h2>Initialization</h2>
-            <p>Setup headers and clear current data in "Gemini Workspace Sync (Node.js)"</p>
+            <h2>System Setup</h2>
+            <p>Danger Zone: Reset headers and clear data for the entire spreadsheet.</p>
             <div style="display: flex; gap: 10px;">
                 <button id="init-btn" class="danger">Reset Spreadsheet Headers</button>
-                <button id="check-conn-btn" style="background: var(--primary); color: white;">Check Connection</button>
+                <button id="check-conn-btn" class="secondary-btn">Check Connection</button>
             </div>
-        </section>
-
-        <section id="form-section" style="display: none;">
-            <div class="form-container">
-                <div class="transaction-form">
-                    <h2>Log Transaction</h2>
-                    <form id="tx-form">
-                        <div class="field">
-                            <label for="date">Date</label>
-                            <input type="date" id="date" required>
-                        </div>
-                        <div class="field">
-                            <label for="amount">Amount</label>
-                            <input type="number" id="amount" step="0.01" required>
-                        </div>
-                        <div class="field">
-                            <label for="cash">Cash (Y/N)</label>
-                            <input type="text" id="cash" placeholder="Y or N">
-                        </div>
-                        <div class="field">
-                            <label for="comment">Comment</label>
-                            <input type="text" id="comment">
-                        </div>
-                        <div class="field">
-                            <label for="cat-a">Category A</label>
-                            <input type="text" id="cat-a">
-                        </div>
-                        <div class="field">
-                            <label for="cat-ab">Category AB</label>
-                            <input type="text" id="cat-ab">
-                        </div>
-                        <div class="field">
-                            <label for="cat-abc">Category ABC</label>
-                            <input type="text" id="cat-abc">
-                        </div>
-                        <div class="field">
-                            <label for="cat-abcd">Category ABCD</label>
-                            <input type="text" id="cat-abcd">
-                        </div>
-                        <div class="field">
-                            <label>Flags</label>
-                            <div class="checkboxes">
-                                <label><input type="checkbox" id="personal"> Personal</label>
-                                <label><input type="checkbox" id="fradulent"> Fraudulent</label>
-                                <label><input type="checkbox" id="non-reimbursable"> Non-Reimbursable</label>
-                            </div>
-                        </div>
-                        <div class="field">
-                            <label for="vendor">Vendor</label>
-                            <input type="text" id="vendor">
-                        </div>
-                        <button type="submit" id="submit-btn">Add to Spreadsheet</button>
-                    </form>
-                </div>
-
-                <div class="recent-transactions">
-                    <h2>Recent Transactions (Last 20)</h2>
-                    <div id="recent-list-container">
-                        <table id="recent-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Amount</th>
-                                    <th>Vendor</th>
-                                    <th>Comment</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recent-tbody">
-                                <!-- Data will be loaded here -->
-                            </tbody>
-                        </table>
-                        <div id="table-status">Loading...</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="data-view-section" style="display: none;">
-            <h2>Last 20 Entries</h2>
-            <div id="data-table-container" class="table-container">
-                <table id="data-table">
-                    <thead>
-                        <tr id="table-header"></tr>
-                    </thead>
-                    <tbody id="table-body"></tbody>
-                </table>
-            </div>
-            <button id="refresh-data-btn">Refresh Data</button>
         </section>
 
         <section id="log-section">
@@ -141,10 +103,38 @@
         </section>
     </main>
 
+    <!-- Modals / Popups -->
+    <div id="modal-overlay" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3 id="modal-title">Settings</h3>
+            <div id="modal-body"></div>
+            <div class="modal-actions">
+                <button id="modal-close-btn">Close</button>
+                <button id="modal-save-btn" style="display: none;">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    <script src="crypto-utils.js"></script>
+    <script src="app.js"></script>
+    <script>
+        lucide.createIcons();
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW Registered'))
+                    .catch(err => console.error('SW Failed', err));
+            });
+        }
+    </script>
+
     <div id="github-setup-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center;">
         <div style="background:white; padding:20px; border-radius:8px; width:90%; max-width:400px;">
             <h3>GitHub Backup Setup</h3>
-            <p>To enable automated encrypted backups to your repository, please provide a GitHub Personal Access Token (with 'repo' scope).</p>
+            <p>Provide a GitHub Personal Access Token (repo scope).</p>
             <input type="password" id="gh-token-input" placeholder="ghp_..." style="width:100%; margin-bottom:10px; padding:8px;">
             <div style="display:flex; justify-content:flex-end; gap:10px;">
                 <button onclick="document.getElementById('github-setup-modal').style.display='none'">Cancel</button>
@@ -152,20 +142,5 @@
             </div>
         </div>
     </div>
-
-    <!-- Google API Client Libraries -->
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-    <script src="crypto-utils.js"></script>
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('SW Registered', reg))
-                    .catch(err => console.error('SW Failed', err));
-            });
-        }
-    </script>
 </body>
 </html>
