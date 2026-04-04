@@ -278,4 +278,11 @@ button:active {
     font-style: italic;
     text-align: center;
 }
-.last-push-info { font-size: 0.75rem; margin-top: 5px; opacity: 0.8; }
+.push-info {
+    font-size: 0.7rem;
+    font-style: italic;
+    margin-top: 10px;
+    color: var(--pastel-pink);
+    opacity: 0.9;
+    text-shadow: 0 0 5px var(--neon-pink);
+}

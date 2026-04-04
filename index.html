@@ -13,7 +13,7 @@
     <header>
         <h1>Transaction Sync</h1>
         <div id="auth-status" class="status">Initializing...</div>
-        <div id="last-push" class="last-push-info">Code Last Updated: <span id="push-time">2026-04-04 14:15:00</span></div>
+        <div class="push-info">Code Last Updated: P26-04-04 16:18:52</span></div>
     </header>
 
     <main>
@@ -42,7 +42,10 @@
         <section id="setup-section" style="display: none;">
             <h2>Initialization</h2>
             <p>Setup headers and clear current data in "Gemini Workspace Sync (Node.js)"</p>
-            <button id="init-btn" class="danger">Reset Spreadsheet Headers</button>
+            <div style="display: flex; gap: 10px;">
+                <button id="init-btn" class="danger">Reset Spreadsheet Headers</button>
+                <button id="check-conn-btn" style="background: var(--primary); color: white;">Check Connection</button>
+            </div>
         </section>
 
         <section id="form-section" style="display: none;">

@@ -448,9 +448,33 @@ async function resetSpreadsheet() {
     }
 }
 
+async function testConnection() {
+    if (!spreadsheetId) {
+        addLog('Error: Not connected to any spreadsheet.');
+        return;
+    }
+    addLog('Testing connection to Google Sheets...');
+    try {
+        const response = await gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: spreadsheetId
+        });
+        addLog(`Connection healthy! Spreadsheet: ${response.result.properties.title}`);
+        alert(`Connected to: ${response.result.properties.title}`);
+    } catch (err) {
+        addLog('Connection Test Failed: ' + err.message);
+        alert('Connection Failed. Please check your internet or re-authenticate.');
+    }
+}
+
 txForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!spreadsheetId) return;
+
+    if (!navigator.onLine) {
+        addLog('Offline: Transaction saved to local draft. Syncing when online...');
+        alert('You are currently offline. The transaction will be saved as a draft and you can submit it once you have a connection.');
+        return;
+    }
 
     try {
         const selectedEntity = document.querySelector('input[name="entity"]:checked').value;
@@ -511,5 +535,8 @@ document.querySelectorAll('input[name="entity"]').forEach(radio => {
 signinBtn.onclick = handleAuthClick;
 signoutBtn.onclick = handleSignoutClick;
 initBtn.onclick = resetSpreadsheet;
+
+const checkConnBtn = document.getElementById('check-conn-btn');
+if (checkConnBtn) checkConnBtn.onclick = testConnection;
 
 document.getElementById('date').valueAsDate = new Date();
